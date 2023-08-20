@@ -1,7 +1,7 @@
 import gradio as gr
 import scripts.mergers.components as components
 from scripts.mergers.mergers import smergegen, simggen
-from scripts.mergers.xyplot import numanager
+from scripts.mergers.xyplot import draw_xyz_grid
 from modules import scripts, script_callbacks
 
 def vladslice(input):
@@ -96,32 +96,62 @@ class GenParamGetter(scripts.Script):
                     outputs=[*components.imagegal],
                 )
 
+                # components.s_reserve.click(
+                #     fn=numanager,
+                #     inputs=[gr.Textbox(value="reserve",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
+                #     outputs=[components.numaframe]
+                # )
+
+                # components.s_reserve1.click(
+                #     fn=numanager,
+                #     inputs=[gr.Textbox(value="reserve",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
+                #     outputs=[components.numaframe]
+                # )
+
+                # components.gengrid.click(
+                #     fn=numanager,
+                #     inputs=[gr.Textbox(value="normal",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
+                #     outputs=[components.submit_result,components.currentmodel,*components.imagegal],
+                # )
+
+                # components.s_startreserve.click(
+                #     fn=numanager,
+                #     inputs=[gr.Textbox(value=" ",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
+                #     outputs=[components.submit_result,components.currentmodel,*components.imagegal],
+                # )
+
+                # components.rand_merge.click(
+                #     fn=numanager,
+                #     inputs=[gr.Textbox(value="random",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
+                #     outputs=[components.submit_result,components.currentmodel,*components.imagegal],
+                # )
+
                 components.s_reserve.click(
-                    fn=numanager,
+                    fn=draw_xyz_grid,
                     inputs=[gr.Textbox(value="reserve",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
                     outputs=[components.numaframe]
                 )
 
                 components.s_reserve1.click(
-                    fn=numanager,
+                    fn=draw_xyz_grid,
                     inputs=[gr.Textbox(value="reserve",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
                     outputs=[components.numaframe]
                 )
 
                 components.gengrid.click(
-                    fn=numanager,
+                    fn=draw_xyz_grid,
                     inputs=[gr.Textbox(value="normal",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
                     outputs=[components.submit_result,components.currentmodel,*components.imagegal],
                 )
 
                 components.s_startreserve.click(
-                    fn=numanager,
+                    fn=draw_xyz_grid,
                     inputs=[gr.Textbox(value=" ",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
                     outputs=[components.submit_result,components.currentmodel,*components.imagegal],
                 )
 
                 components.rand_merge.click(
-                    fn=numanager,
+                    fn=draw_xyz_grid,
                     inputs=[gr.Textbox(value="random",visible=False),*components.xysettings,*components.msettings,*components.genparams,*components.hiresfix,*components.lucks,*components.txt2img_params],
                     outputs=[components.submit_result,components.currentmodel,*components.imagegal],
                 )
