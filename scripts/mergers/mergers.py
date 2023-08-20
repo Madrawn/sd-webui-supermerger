@@ -930,7 +930,7 @@ def eratiodealer(dr,randomer,block,num,lucks):
 def simggen(s_prompt,s_nprompt,s_steps,s_sampler,s_cfg,s_seed,s_w,s_h,s_batch_size,
             genoptions,s_hrupscaler,s_hr2ndsteps,s_denois_str,s_hr_scale,
             id_task: str, prompt: str, negative_prompt: str, prompt_styles, steps: int, sampler_name: str, n_iter: int, batch_size: int, cfg_scale: float, height: int, width: int, enable_hr: bool, denoising_strength: float, hr_scale: float, hr_upscaler: str, hr_second_pass_steps: int, hr_resize_x: int, hr_resize_y: int, hr_checkpoint_name: str, hr_sampler_name: str, hr_prompt: str, hr_negative_prompt, override_settings_texts, *args,
-            mergeinfo="",id_sets=[],modelid = "no id"):
+            mergeinfo="",id_sets=[],modelid = "no id",p=None):
     shared.state.begin()
 
     #params = [s_prompt,s_nprompt,s_steps,s_sampler,s_cfg,s_seed,s_w,s_h,s_batch_size,genoptions,s_hrupscaler,s_hr2ndsteps,s_denois_str,s_hr_scale]
@@ -945,33 +945,60 @@ def simggen(s_prompt,s_nprompt,s_steps,s_sampler,s_cfg,s_seed,s_w,s_h,s_batch_si
 
     if sampler_name is None:sampler_name = sd_samplers.samplers[0].name
     if s_sampler is None: s_sampler = 0
-    p = processing.StableDiffusionProcessingTxt2Img(
-        sd_model=shared.sd_model,
-        outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
-        outpath_grids=opts.outdir_grids or opts.outdir_txt2img_grids,
-        prompt=prompt,
-        styles=prompt_styles,
-        negative_prompt=negative_prompt,
-        sampler_name=sampler_name,
-        batch_size=batch_size,
-        n_iter=n_iter,
-        steps=steps,
-        cfg_scale=cfg_scale,
-        width=width,
-        height=height,
-        enable_hr=enable_hr,
-        denoising_strength=denoising_strength if enable_hr else None,
-        hr_scale=hr_scale,
-        hr_upscaler=hr_upscaler,
-        hr_second_pass_steps=hr_second_pass_steps,
-        hr_resize_x=hr_resize_x,
-        hr_resize_y=hr_resize_y,
-        hr_checkpoint_name=None if hr_checkpoint_name == 'Use same checkpoint' else hr_checkpoint_name,
-        hr_sampler_name=None if hr_sampler_name == 'Use same sampler' else hr_sampler_name,
-        hr_prompt=hr_prompt,
-        hr_negative_prompt=hr_negative_prompt,
-        override_settings=override_settings,
-    )
+    if p == None:
+        p = processing.StableDiffusionProcessingTxt2Img(
+            sd_model=shared.sd_model,
+            outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
+            outpath_grids=opts.outdir_grids or opts.outdir_txt2img_grids,
+            prompt=prompt,
+            styles=prompt_styles,
+            negative_prompt=negative_prompt,
+            sampler_name=sampler_name,
+            batch_size=batch_size,
+            n_iter=n_iter,
+            steps=steps,
+            cfg_scale=cfg_scale,
+            width=width,
+            height=height,
+            enable_hr=enable_hr,
+            denoising_strength=denoising_strength if enable_hr else None,
+            hr_scale=hr_scale,
+            hr_upscaler=hr_upscaler,
+            hr_second_pass_steps=hr_second_pass_steps,
+            hr_resize_x=hr_resize_x,
+            hr_resize_y=hr_resize_y,
+            hr_checkpoint_name=None if hr_checkpoint_name == 'Use same checkpoint' else hr_checkpoint_name,
+            hr_sampler_name=None if hr_sampler_name == 'Use same sampler' else hr_sampler_name,
+            hr_prompt=hr_prompt,
+            hr_negative_prompt=hr_negative_prompt,
+            override_settings=override_settings,
+        )
+    else:
+        p.sd_model=shared.sd_model,
+        p.outpath_samples=opts.outdir_samples or opts.outdir_txt2img_samples,
+        p.outpath_grids=opts.outdir_grids or opts.outdir_txt2img_grids,
+        p.prompt=prompt,
+        p.styles=prompt_styles,
+        p.negative_prompt=negative_prompt,
+        p.sampler_name=sampler_name,
+        p.batch_size=batch_size,
+        p.n_iter=n_iter,
+        p.steps=steps,
+        p.cfg_scale=cfg_scale,
+        p.width=width,
+        p.height=height,
+        p.enable_hr=enable_hr,
+        p.denoising_strength=denoising_strength if enable_hr else None,
+        p.hr_scale=hr_scale,
+        p.hr_upscaler=hr_upscaler,
+        p.hr_second_pass_steps=hr_second_pass_steps,
+        p.hr_resize_x=hr_resize_x,
+        p.hr_resize_y=hr_resize_y,
+        p.hr_checkpoint_name=None if hr_checkpoint_name == 'Use same checkpoint' else hr_checkpoint_name,
+        p.hr_sampler_name=None if hr_sampler_name == 'Use same sampler' else hr_sampler_name,
+        p.hr_prompt=hr_prompt,
+        p.hr_negative_prompt=hr_negative_prompt,
+        p.override_settings=override_settings,
 
 
     p.scripts = scripts.scripts_txt2img
