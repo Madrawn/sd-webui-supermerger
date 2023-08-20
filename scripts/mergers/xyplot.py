@@ -9,7 +9,7 @@ import csv
 from PIL import Image
 from modules import images, sd_models, devices
 from modules.shared import opts
-from scripts.mergers.mergers import TYPES,FINETUNEX,smerge,simggen,filenamecutter,draw_origin,wpreseter,savestatics
+from scripts.mergers.mergers import FINETUNEX,smerge,simggen,filenamecutter,draw_origin,wpreseter,savestatics, MODES
 from scripts.mergers.model_util import savemodel,usemodel
 from scripts.mergers.bcolors import bcolors
 
@@ -23,6 +23,75 @@ NUM = "num"
 RAND = "random"
 
 numadepth = []
+
+def format_value_add_label(p, opt, x):
+    if type(x) == float:
+        x = round(x, 8)
+
+    return f"{opt.label}: {x}"
+
+def do_nothing(p, x, xs):
+    pass
+
+def format_nothing(p, opt, x):
+    return ""
+
+
+def apply_field(field):
+    def fun(p, x, xs):
+        setattr(p, field, x)
+
+    return fun
+
+def format_remove_path(p, opt, x):
+    return os.path.basename(x)
+
+def confirm_checkpoints(p, xs):
+    for x in xs:
+        if sd_models.get_closet_checkpoint_match(x) is None:
+            raise RuntimeError(f"Unknown checkpoint: {x}")
+  
+def boolean_choice(reverse: bool = False):
+    def choice():
+        return ["False", "True"] if reverse else ["True", "False"]
+    return choice
+      
+class AxisOption:
+    def __init__(self, label, type, apply, format_value=format_value_add_label, confirm=None, cost=0.0, choices=None):
+        self.label = label
+        self.type = type
+        self.apply = apply
+        self.format_value = format_value
+        self.confirm = confirm
+        self.cost = cost
+        self.choices = choices
+
+
+axis_options=[  
+    AxisOption("none", int, do_nothing, format_value=format_nothing),
+    AxisOption("alpha", int, apply_field("alpha")),
+    AxisOption("beta (if Triple or Twice is not selected,Twice automatically enable)", int, apply_field("beta")),
+    AxisOption("alpha and beta", int, apply_field("alpha and beta")),
+    AxisOption("seed", int, apply_field("seed")),
+    AxisOption("mbw alpha", int, apply_field("mbw alpha ")),
+    AxisOption("mbw beta", int, apply_field("mbw beta")),
+    AxisOption("mbw alpha and beta", int, apply_field("mbw alpha and beta")),
+    AxisOption("model_A", str, apply_field("model_A"), format_value=format_remove_path, confirm=confirm_checkpoints, cost=1.0, choices=lambda: sorted(sd_models.checkpoints_list, key=str.casefold)),
+    AxisOption("model_B", str, apply_field("model_B"), format_value=format_remove_path, confirm=confirm_checkpoints, cost=1.0, choices=lambda: sorted(sd_models.checkpoints_list, key=str.casefold)),
+    AxisOption("model_C", str, apply_field("model_C"), format_value=format_remove_path, confirm=confirm_checkpoints, cost=1.0, choices=lambda: sorted(sd_models.checkpoints_list, key=str.casefold)),
+    AxisOption("pinpoint blocks (alpha or beta must be selected for another axis)", int, apply_field("pinpoint blocks")),
+    AxisOption("elemental", int, apply_field("elemental")),
+    AxisOption("add elemental", int, apply_field("add elemental")),
+    AxisOption("pinpoint element", int, apply_field("pinpoint element")),
+    AxisOption("effective elemental checker", int, apply_field("effective")),
+    AxisOption("adjust", int, apply_field("adjust")),
+    AxisOption("pinpoint adjust (IN,OUT,OUT2,CONT,COL1,COL2,,COL3)", int, apply_field("pinpoint adjust")),
+    AxisOption("calcmode", str, apply_field("calcmode"),cost=0.2, choices=lambda: sorted(["normal", "cosineA", "cosineB","trainDifference","smoothAdd","smoothAdd MT","tensor","tensor2","self"])),
+    AxisOption("mode", str, apply_field("mode"),cost=0.1, choices=lambda: sorted(MODES)),
+    AxisOption("prompt", str, apply_field("prompt")),
+    AxisOption("random", int, apply_field("random")),
+]
+
 
 def freezetime():
     global state_mergen
@@ -43,7 +112,7 @@ def numanager(startmode,xtype,xmen,ytype,ymen,ztype,zmen,esettings,
         if "off" in lmode:return "Random mode is off",*[None]*5
         if lserial > 0 : lseed = -1
         useblocks = True
-    if RAND in startmode or TYPES.index(RAND) in [xtype,ytype,ztype]:
+    if RAND in startmode or axis_options.index(RAND) in [xtype,ytype,ztype]:
         xtype,xmen,ytype,ymen,weights_a,weights_b = crazyslot(lmode,lsets,llimits_u,llimits_l,lseed,lserial,lcustom,xtype,xmen,ytype,ymen,weights_a,weights_b,startmode)
 
     lucks = {"on":startmode == RAND, "mode":lmode,"set":lsets,"upp":llimits_u,"low":llimits_l,"seed":lseed,"num":lserial,"cust":lcustom,"round":int(lround)}
@@ -132,9 +201,9 @@ def nulister(redel):
 def numalistmaker(numa):
     if numa ==[]: return [["no data","",""],]
     for i,r in enumerate(numa):
-        r[2] =  TYPES[int(r[2])]
-        r[4] =  TYPES[int(r[4])]
-        r[6] =  TYPES[int(r[6])]
+        r[2] =  axis_options[int(r[2])]
+        r[4] =  axis_options[int(r[4])]
+        r[6] =  axis_options[int(r[6])]
         numa[i] = r[0:8]+r[11:14]+r[14:18]+r[9:11]
     return numa
 
@@ -153,9 +222,9 @@ def sgenxyplot(xtype,xmen,ytype,ymen,ztype,zmen,esettings,
 
     deep_ori = deep
     #type[0:none,1:aplha,2:beta,3:seed,4:mbw,5:model_A,6:model_B,7:model_C,8:pinpoint 9:deep]
-    xtype = TYPES[xtype]
-    ytype = TYPES[ytype]
-    ztype = TYPES[ztype]
+    xtype = axis_options[xtype]
+    ytype = axis_options[ytype]
+    ztype = axis_options[ztype]
     XYZ =xtype + ytype + ztype 
 
     #ALL
@@ -418,7 +487,7 @@ def sgenxyplot(xtype,xmen,ytype,ymen,ztype,zmen,esettings,
         if "mbw alpha and beta" in ytype: ys_t = [f"alpha:({y[0]}),beta({y[1]})" for y in ys ]
 
         xs_t[0]=xtype+" = "+xs_t[0] #draw X label
-        if ytype!=TYPES[0] or "model" in ytype:ys_t[0]=ytype+" = "+ys[0]  #draw Y label
+        if ytype!=axis_options[0] or "model" in ytype:ys_t[0]=ytype+" = "+ys[0]  #draw Y label
 
         if ys_t==[""]:ys_t = [" "]
 
@@ -610,11 +679,11 @@ def effectivechecker(imgs,xs,ys,model_a,model_b,esettings):
 def crazyslot(lmode,lsets,llimits_u,llimits_l,lseed,lserial,lcustom,xtype,xmen,ytype,ymen,weights_a,weights_b,start):
     if start == RAND:
         if lserial > RANDCOL:
-            xtype = ytype = TYPES.index(RAND)
+            xtype = ytype = axis_options.index(RAND)
             xmen = RANDCOL
             ymen = lserial // RANDCOL + 1 
         else:
-            xtype = TYPES.index(RAND)
+            xtype = axis_options.index(RAND)
             xmen = lserial
 
     if "alpha" in lsets:
@@ -631,9 +700,9 @@ def crazyslot(lmode,lsets,llimits_u,llimits_l,lseed,lserial,lcustom,xtype,xmen,y
 
     return xtype,xmen,ytype,ymen,weights_a,weights_b
 
-def alldealer(mens,types):
+def alldealer(mens,axis_options):
     for i, men in enumerate(mens):
         if men == "ALL":
-            if types[i] == "pinpoint blocks":mens[i] = "BASE,IN00,IN01,IN02,IN03,IN04,IN05,IN06,IN07,IN08,IN09,IN10,IN11,M00|OUT00,OUT01,OUT02,OUT03,OUT04,OUT05,OUT06,OUT07,OUT08,OUT09,OUT10,OUT11"
-            if types[i] == "pinpoint adjust":mens[i] ="IN,OUT,OUT2,CONT,COL1,COL2,COL3" 
+            if axis_options[i] == "pinpoint blocks":mens[i] = "BASE,IN00,IN01,IN02,IN03,IN04,IN05,IN06,IN07,IN08,IN09,IN10,IN11,M00|OUT00,OUT01,OUT02,OUT03,OUT04,OUT05,OUT06,OUT07,OUT08,OUT09,OUT10,OUT11"
+            if axis_options[i] == "pinpoint adjust":mens[i] ="IN,OUT,OUT2,CONT,COL1,COL2,COL3" 
     return mens

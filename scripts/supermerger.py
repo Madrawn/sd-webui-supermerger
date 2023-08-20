@@ -1,14 +1,17 @@
 import argparse
 import gc
+from io import StringIO
 import os
 import os.path
+from itertools import permutations, chain
 import re
 import json
 import shutil
 from importlib import reload
 from pprint import pprint
 import gradio as gr
-from modules import (devices, script_callbacks, sd_hijack, sd_models,sd_vae, shared)
+from modules.ui_components import ToolButton
+from modules import (devices, script_callbacks, sd_hijack, sd_models,sd_vae, shared, sd_models)
 from modules.scripts import basedir
 from modules.sd_models import checkpoints_loaded
 from modules.shared import opts
@@ -24,11 +27,28 @@ reload(scripts.mergers.xyplot)
 reload(scripts.mergers.pluslora)
 import csv
 import scripts.mergers.pluslora as pluslora
-from scripts.mergers.mergers import (TYPESEG, freezemtime, rwmergelog, simggen,smergegen, blockfromkey)
-from scripts.mergers.xyplot import freezetime, nulister, numanager
+from scripts.mergers.mergers import (freezemtime, rwmergelog, simggen,smergegen, blockfromkey, BLOCKID, BLOCKIDXL, BLOCKIDXLL)
+from scripts.mergers.xyplot import freezetime, nulister, numanager, axis_options, AxisOption
 from scripts.mergers.model_util import filenamecutter
 
 path_root = basedir()
+fill_values_symbol = "\U0001f4d2"  # 📒
+  
+
+def elem_id(item_id):
+    """helper function to generate id for a HTML element, constructs final id out of script name, tab and user-supplied item_id"""
+    tabkind = 'supermerger'
+    tabname = f"{tabkind}_" 
+
+    return f'script_{tabname}_{item_id}'
+ 
+def list_to_csv_string(data_list):
+    with StringIO() as o:
+        csv.writer(o).writerow(data_list)
+        return o.getvalue().strip()
+
+
+current_axis_options = [x for x in axis_options if type(x) == AxisOption]
 
 def on_ui_tabs():
     weights_presets=""
@@ -136,16 +156,37 @@ def on_ui_tabs():
                             deep = gr.Textbox(label="Blocks:Element:Ratio,Blocks:Element:Ratio,...",lines=2,value="")
                         with gr.Row():    
                             tensor = gr.Textbox(label="Adjust(IN,OUT,contrast,colors,colors,colors) 0,0,0,0,0,0,0",lines=2,value="")
+
+                    x_type = gr.Dropdown(label="X type", choices=[x.label for x in current_axis_options], value=current_axis_options[1].label, type="index", elem_id=elem_id("x_type"))
+                    x_values = gr.Textbox(label="X values", lines=3, elem_id=elem_id("x_values"), value="0.25,0.5,0.75")
+                    x_values_dropdown = gr.Dropdown(label="X values", visible=False, multiselect=True, interactive=True)
+                    fill_x_button = ToolButton(value=fill_values_symbol, elem_id="xyz_grid_fill_x_tool_button", visible=False)
+
+                    y_type = gr.Dropdown(label="Y type", choices=[x.label for x in current_axis_options], value=current_axis_options[0].label, type="index", elem_id=elem_id("y_type"))
+                    y_values = gr.Textbox(label="Y values", lines=3, elem_id=elem_id("y_values"))
+                    y_values_dropdown = gr.Dropdown(label="Y values", visible=False, multiselect=True, interactive=True)
+                    fill_y_button = ToolButton(value=fill_values_symbol, elem_id="xyz_grid_fill_y_tool_button", visible=False)
+
+                    z_type = gr.Dropdown(label="Z type", choices=[x.label for x in current_axis_options], value=current_axis_options[0].label, type="index", elem_id=elem_id("z_type"))
+                    z_values = gr.Textbox(label="Z values", lines=3, elem_id=elem_id("z_values"))
+                    z_values_dropdown = gr.Dropdown(label="Z values", visible=False, multiselect=True, interactive=True)
+                    fill_z_button = ToolButton(value=fill_values_symbol, elem_id="xyz_grid_fill_z_tool_button", visible=False)       
+                    with gr.Column():
+                        csv_mode = gr.Checkbox(label='Use text inputs instead of dropdowns', value=False, elem_id=elem_id("csv_mode"))             
+                    # with gr.Row():
+                    #     x_type = gr.Dropdown(label="X type", choices=[x for x in TYPESEG], value="alpha", type="index")
+                    #     x_randseednum = gr.Number(value=3, label="number of -1", interactive=True, visible = True)
+                    # x_values = gr.Textbox(label="Sequential Merge Parameters",lines=3,value="0.25,0.5,0.75")
+                    # y_type = gr.Dropdown(label="Y type", choices=[y for y in TYPESEG], value="none", type="index")    
+                    # y_values = gr.Textbox(label="Y grid (Disabled if blank)",lines=3,value="",visible =False)
+                    # z_type = gr.Dropdown(label="Z type", choices=[y for y in TYPESEG], value="none", type="index")    
+                    # z_values = gr.Textbox(label="Z grid (Disabled if blank)",lines=3,value="",visible =False)
+                    esettings = gr.CheckboxGroup(label = "XYZ plot settings",choices=["save model","save csv","save anime gif","not save grid","print change"],type="value",interactive=True)
+                    with gr.Row(variant="compact", elem_id="swap_axes"):
+                        swap_xy_axes_button = gr.Button(value="Swap X/Y axes", elem_id="xy_grid_swap_axes_button")
+                        swap_yz_axes_button = gr.Button(value="Swap Y/Z axes", elem_id="yz_grid_swap_axes_button")
+                        swap_xz_axes_button = gr.Button(value="Swap X/Z axes", elem_id="xz_grid_swap_axes_button")
                     
-                    with gr.Row():
-                        x_type = gr.Dropdown(label="X type", choices=[x for x in TYPESEG], value="alpha", type="index")
-                        x_randseednum = gr.Number(value=3, label="number of -1", interactive=True, visible = True)
-                    xgrid = gr.Textbox(label="Sequential Merge Parameters",lines=3,value="0.25,0.5,0.75")
-                    y_type = gr.Dropdown(label="Y type", choices=[y for y in TYPESEG], value="none", type="index")    
-                    ygrid = gr.Textbox(label="Y grid (Disabled if blank)",lines=3,value="",visible =False)
-                    z_type = gr.Dropdown(label="Z type", choices=[y for y in TYPESEG], value="none", type="index")    
-                    zgrid = gr.Textbox(label="Z grid (Disabled if blank)",lines=3,value="",visible =False)
-                    esettings = gr.CheckboxGroup(label = "XYZ plot settings",choices=["swap XY","save model","save csv","save anime gif","not save grid","print change"],type="value",interactive=True)
                     with gr.Row():
                         components.gengrid = gr.Button(elem_id="model_merger_merge", value="Sequential XY Merge and Generation",variant='primary')
                         stopgrid = gr.Button(elem_id="model_merger_merge", value="Stop XY",variant='primary')
@@ -153,7 +194,6 @@ def on_ui_tabs():
                     components.dtrue =  gr.Checkbox(value = True, visible = False)                
                     components.dfalse =  gr.Checkbox(value = False,visible = False)     
                     dummy_t =  gr.Textbox(value = "",visible = False)    
-                blockid=["BASE","IN00","IN01","IN02","IN03","IN04","IN05","IN06","IN07","IN08","IN09","IN10","IN11","M00","OUT00","OUT01","OUT02","OUT03","OUT04","OUT05","OUT06","OUT07","OUT08","OUT09","OUT10","OUT11"]
         
                 with gr.Column(scale = 2):
                     components.currentmodel = gr.Textbox(label="Current Model",lines=1,value="")  
@@ -178,12 +218,12 @@ def on_ui_tabs():
                             lucklimits_l = gr.Textbox(label="Lower limit for X",value = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0")
                         components.rand_merge = gr.Button(elem_id="runrandmerge", value="Run Rand",variant='primary')
 
-            with gr.Row(visible = False) as row_inputers:
-                inputer = gr.Textbox(label="",lines=1,value="")
-                addtox = gr.Button(value="Add to Sequence X")
-                addtoy = gr.Button(value="Add to Sequence Y")
+            # with gr.Row(visible = False) as row_inputers:
+            #     inputer = gr.Textbox(label="",lines=1,value="")
+            #     addtox = gr.Button(value="Add to Sequence X")
+            #     addtoy = gr.Button(value="Add to Sequence Y")
             with gr.Row(visible = False) as row_blockids:
-                blockids = gr.CheckboxGroup(label = "block IDs",choices=[x for x in blockid],type="value",interactive=True)
+                blockids = gr.CheckboxGroup(label = "block IDs",choices=[x for x in BLOCKID],type="value",interactive=True)
             with gr.Row(visible = False) as row_calcmode:
                 calcmodes = gr.CheckboxGroup(label = "calcmode",choices=["normal", "cosineA", "cosineB","trainDifference", "smoothAdd","smoothAdd MT","tensor","tensor2","self"],type="value",interactive=True)
             with gr.Row(visible = False) as row_checkpoints:
@@ -402,7 +442,7 @@ def on_ui_tabs():
 
         components.msettings=[weights_a,weights_b,model_a,model_b,model_c,base_alpha,base_beta,mode,calcmode,useblocks,custom_name,save_sets,components.id_sets,wpresets,deep,tensor,bake_in_vae]
         components.imagegal = [mgallery,mgeninfo,mhtmlinfo,mhtmllog]
-        components.xysettings=[x_type,xgrid,y_type,ygrid,z_type,zgrid,esettings]
+        components.xysettings=[x_type,x_values,y_type,y_values,z_type,z_values,esettings]
         components.genparams=[prompt,neg_prompt,steps,sampler,cfg,seed,width,height,batch_size]
         components.hiresfix = [genoptions,hrupscaler,hr2ndsteps,denois_str,hr_scale]
         components.lucks = [luckmode,lucksets,lucklimits_u,lucklimits_l,luckseed,luckserial,luckcustom,luckround]
@@ -427,21 +467,21 @@ def on_ui_tabs():
         s_reloadreserve.click(fn=nulister,inputs=[components.dfalse],outputs=[components.numaframe])
         s_delreserve.click(fn=nulister,inputs=[s_delnum],outputs=[components.numaframe])
         loadcachelist.click(fn=load_cachelist,inputs=[],outputs=[currentcache])
-        addtox.click(fn=lambda x:gr.Textbox.update(value = x),inputs=[inputer],outputs=[xgrid])
-        addtoy.click(fn=lambda x:gr.Textbox.update(value = x),inputs=[inputer],outputs=[ygrid])
+        # addtox.click(fn=lambda x:gr.Textbox.update(value = x),inputs=[inputer],outputs=[x_values])
+        # addtoy.click(fn=lambda x:gr.Textbox.update(value = x),inputs=[inputer],outputs=[y_values])
 
         stopgrid.click(fn=freezetime)
         stopmerge.click(fn=freezemtime)
 
-        checkpoints.change(fn=lambda x:",".join(x),inputs=[checkpoints],outputs=[inputer])
-        blockids.change(fn=lambda x:" ".join(x),inputs=[blockids],outputs=[inputer])
-        calcmodes.change(fn=lambda x:",".join(x),inputs=[calcmodes],outputs=[inputer])
+        # checkpoints.change(fn=lambda x:",".join(x),inputs=[checkpoints],outputs=[inputer])
+        # blockids.change(fn=lambda x:" ".join(x),inputs=[blockids],outputs=[inputer])
+        # calcmodes.change(fn=lambda x:",".join(x),inputs=[calcmodes],outputs=[inputer])
 
         menbers = [base,in00,in01,in02,in03,in04,in05,in06,in07,in08,in09,in10,in11,mi00,ou00,ou01,ou02,ou03,ou04,ou05,ou06,ou07,ou08,ou09,ou10,ou11]
 
         setalpha.click(fn=slider2text,inputs=[*menbers,wpresets, dd_preset_weight,isxl],outputs=[weights_a])
         setbeta.click(fn=slider2text,inputs=[*menbers,wpresets, dd_preset_weight,isxl],outputs=[weights_b])
-        setx.click(fn=add_to_seq,inputs=[xgrid,weights_a],outputs=[xgrid])     
+        setx.click(fn=add_to_seq,inputs=[x_values,weights_a],outputs=[x_values])     
 
         def addblockweights(val, blockopt, *blocks):
             if val == "none":
@@ -573,10 +613,60 @@ def on_ui_tabs():
 
         isxl.change(fn=changexl,inputs=[isxl], outputs=menbers)
 
-        x_type.change(fn=showxy,inputs=[x_type,y_type,z_type], outputs=[row_blockids,row_checkpoints,row_inputers,ygrid,zgrid,row_esets,row_calcmode])
-        y_type.change(fn=showxy,inputs=[x_type,y_type,z_type], outputs=[row_blockids,row_checkpoints,row_inputers,ygrid,zgrid,row_esets,row_calcmode])
-        z_type.change(fn=showxy,inputs=[x_type,y_type,z_type], outputs=[row_blockids,row_checkpoints,row_inputers,ygrid,zgrid,row_esets,row_calcmode])
-        x_randseednum.change(fn=makerand,inputs=[x_randseednum],outputs=[xgrid])
+        def swap_axes(axis1_type, axis1_values, axis1_values_dropdown, axis2_type, axis2_values, axis2_values_dropdown):
+            return current_axis_options[axis2_type].label, axis2_values, axis2_values_dropdown, current_axis_options[axis1_type].label, axis1_values, axis1_values_dropdown
+
+        xy_swap_args = [x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown]
+        swap_xy_axes_button.click(swap_axes, inputs=xy_swap_args, outputs=xy_swap_args)
+        yz_swap_args = [y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown]
+        swap_yz_axes_button.click(swap_axes, inputs=yz_swap_args, outputs=yz_swap_args)
+        xz_swap_args = [x_type, x_values, x_values_dropdown, z_type, z_values, z_values_dropdown]
+        swap_xz_axes_button.click(swap_axes, inputs=xz_swap_args, outputs=xz_swap_args)
+
+        def fill(axis_type, csv_mode):
+            axis = current_axis_options[axis_type]
+            if axis.choices:
+                if csv_mode:
+                    return list_to_csv_string(axis.choices()), gr.update()
+                else:
+                    return gr.update(), axis.choices()
+            else:
+                return gr.update(), gr.update()
+
+        fill_x_button.click(fn=fill, inputs=[x_type, csv_mode], outputs=[x_values, x_values_dropdown])
+        fill_y_button.click(fn=fill, inputs=[y_type, csv_mode], outputs=[y_values, y_values_dropdown])
+        fill_z_button.click(fn=fill, inputs=[z_type, csv_mode], outputs=[z_values, z_values_dropdown])
+
+        def select_axis(axis_type, axis_values, axis_values_dropdown, csv_mode):
+            choices = current_axis_options[axis_type].choices
+            has_choices = choices is not None
+
+            current_values = axis_values
+            current_dropdown_values = axis_values_dropdown
+            if has_choices:
+                choices = choices()
+                if csv_mode:
+                    current_dropdown_values = list(filter(lambda x: x in choices, current_dropdown_values))
+                    current_values = list_to_csv_string(current_dropdown_values)
+                else:
+                    current_dropdown_values = [x.strip() for x in chain.from_iterable(csv.reader(StringIO(axis_values)))]
+                    current_dropdown_values = list(filter(lambda x: x in choices, current_dropdown_values))
+
+            return (gr.Button.update(visible=has_choices), gr.Textbox.update(visible=not has_choices or csv_mode, value=current_values),
+                    gr.update(choices=choices if has_choices else None, visible=has_choices and not csv_mode, value=current_dropdown_values))
+
+        x_type.change(fn=select_axis, inputs=[x_type, x_values, x_values_dropdown, csv_mode], outputs=[fill_x_button, x_values, x_values_dropdown])
+        y_type.change(fn=select_axis, inputs=[y_type, y_values, y_values_dropdown, csv_mode], outputs=[fill_y_button, y_values, y_values_dropdown])
+        z_type.change(fn=select_axis, inputs=[z_type, z_values, z_values_dropdown, csv_mode], outputs=[fill_z_button, z_values, z_values_dropdown])
+
+        def change_choice_mode(csv_mode, x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown):
+            _fill_x_button, _x_values, _x_values_dropdown = select_axis(x_type, x_values, x_values_dropdown, csv_mode)
+            _fill_y_button, _y_values, _y_values_dropdown = select_axis(y_type, y_values, y_values_dropdown, csv_mode)
+            _fill_z_button, _z_values, _z_values_dropdown = select_axis(z_type, z_values, z_values_dropdown, csv_mode)
+            return _fill_x_button, _x_values, _x_values_dropdown, _fill_y_button, _y_values, _y_values_dropdown, _fill_z_button, _z_values, _z_values_dropdown
+
+        csv_mode.change(fn=change_choice_mode, inputs=[csv_mode, x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown], outputs=[fill_x_button, x_values, x_values_dropdown, fill_y_button, y_values, y_values_dropdown, fill_z_button, z_values, z_values_dropdown])
+
 
         import subprocess
         def openeditors():
@@ -709,25 +799,18 @@ def load_cachelist():
         text = text +"\r\n"+ x.model_name
     return text.replace("\r\n","",1)
 
-def makerand(num):
-    text = ""
-    for x in range(int(num)):
-        text = text +"-1,"
-    text = text[:-1]
-    return text
-
-#0 row_blockids, 1 row_checkpoints, 2 row_inputers,3 ygrid, 4 zgrid, 5 row_esets, 6 row_calcmode
-def showxy(x,y,z):
-    flags =[False]*7
-    t = TYPESEG
-    txy = t[x] + t[y] + t[z]
-    if "model" in txy : flags[1] = flags[2] = True
-    if "pinpoint" in txy : flags[0] = flags[2] = True
-    if "effective" in txy or "element" in txy : flags[5] = True
-    if "calcmode" in txy : flags[6] = True
-    if not "none" in t[y] : flags[3] = flags[2] = True
-    if not "none" in t[z] : flags[4] = flags[2] = True
-    return [gr.update(visible = x) for x in flags]
+#0 row_blockids, 1 row_checkpoints, 2 row_inputers,3 y_values, 4 z_values, 5 row_esets, 6 row_calcmode
+# def showxy(x,y,z):
+#     flags =[False]*7
+#     t = TYPESEG
+#     txy = t[x] + t[y] + t[z]
+#     if "model" in txy : flags[1] = flags[2] = True
+#     if "pinpoint" in txy : flags[0] = flags[2] = True
+#     if "effective" in txy or "element" in txy : flags[5] = True
+#     if "calcmode" in txy : flags[6] = True
+#     if not "none" in t[y] : flags[3] = flags[2] = True
+#     if not "none" in t[z] : flags[4] = flags[2] = True
+#     return [gr.update(visible = x) for x in flags]
 
 def text2slider(text):
     vals = [t.strip() for t in text.split(",")]
@@ -797,10 +880,6 @@ def find_preset_by_name(presets, preset):
             return w
 
     return None
-
-BLOCKID=["BASE","IN00","IN01","IN02","IN03","IN04","IN05","IN06","IN07","IN08","IN09","IN10","IN11","M00","OUT00","OUT01","OUT02","OUT03","OUT04","OUT05","OUT06","OUT07","OUT08","OUT09","OUT10","OUT11","Not Merge"]
-BLOCKIDXL=['BASE', 'IN0', 'IN1', 'IN2', 'IN3', 'IN4', 'IN5', 'IN6', 'IN7', 'IN8', 'M', 'OUT0', 'OUT1', 'OUT2', 'OUT3', 'OUT4', 'OUT5', 'OUT6', 'OUT7', 'OUT8', 'VAE']
-BLOCKIDXLL=['BASE', 'IN00', 'IN01', 'IN02', 'IN03', 'IN04', 'IN05', 'IN06', 'IN07', 'IN08', 'M00', 'OUT00', 'OUT01', 'OUT02', 'OUT03', 'OUT04', 'OUT05', 'OUT06', 'OUT07', 'OUT08', 'VAE']
 
 def modeltype(sd):
     if "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.weight" in sd.keys():
