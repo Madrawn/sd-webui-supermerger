@@ -7,7 +7,7 @@ import os
 import copy
 import csv
 from PIL import Image
-from modules import images, sd_models, devices
+from modules import images, sd_models, devices, processing
 from modules.shared import opts
 from scripts.mergers.mergers import FINETUNEX,smerge,simggen,filenamecutter,draw_origin,wpreseter,savestatics, MODES
 from scripts.mergers.model_util import savemodel,usemodel
@@ -706,3 +706,194 @@ def alldealer(mens,axis_options):
             if axis_options[i] == "pinpoint blocks":mens[i] = "BASE,IN00,IN01,IN02,IN03,IN04,IN05,IN06,IN07,IN08,IN09,IN10,IN11,M00|OUT00,OUT01,OUT02,OUT03,OUT04,OUT05,OUT06,OUT07,OUT08,OUT09,OUT10,OUT11"
             if axis_options[i] == "pinpoint adjust":mens[i] ="IN,OUT,OUT2,CONT,COL1,COL2,COL3" 
     return mens
+
+
+# def draw_xyz_grid(p, xs, ys, zs, x_labels, y_labels, z_labels, cell, draw_legend, include_lone_images, include_sub_grids, first_axes_processed, second_axes_processed, margin_size):
+def draw_xyz_grid(xtype,xmen,ytype,ymen,ztype,zmen,esettings,
+                  weights_a,weights_b,model_a,model_b,model_c,alpha,beta,mode,
+                  calcmode,useblocks,custom_name,save_sets,id_sets,wpresets,deep,fine,bake_in_vae,
+                  gensets,gensets_s,lucks):
+    
+    p = processing.StableDiffusionProcessingTxt2Img()
+    
+    hor_texts = [[images.GridAnnotation(x)] for x in xtype]
+    ver_texts = [[images.GridAnnotation(y)] for y in ytype]
+    title_texts = [[images.GridAnnotation(z)] for z in ztype]
+
+    list_size = (len(xmem) * len(ymem) * len(zmem))
+
+    processed_result = None
+
+    state.job_count = list_size * p.n_iter
+
+    def cell(x, y, z, ix, iy, iz):
+        if shared.state.interrupted:
+            return Processed(p, [], p.seed, "")
+
+        pc = copy(p)
+        pc.styles = pc.styles[:]
+        x_opt.apply(pc, x, xmem)
+        y_opt.apply(pc, y, ymem)
+        z_opt.apply(pc, z, zmem)
+
+        res = process_images(pc)
+
+        # Sets subgrid infotexts
+        subgrid_index = 1 + iz
+        if grid_infotext[subgrid_index] is None and ix == 0 and iy == 0:
+            pc.extra_generation_params = copy(pc.extra_generation_params)
+            pc.extra_generation_params['Script'] = self.title()
+
+            if x_opt.label != 'Nothing':
+                pc.extra_generation_params["X Type"] = x_opt.label
+                pc.extra_generation_params["X Values"] = x_values
+                if x_opt.label in ["Seed", "Var. seed"] and not no_fixed_seeds:
+                    pc.extra_generation_params["Fixed X Values"] = ", ".join([str(x) for x in xmem])
+
+            if y_opt.label != 'Nothing':
+                pc.extra_generation_params["Y Type"] = y_opt.label
+                pc.extra_generation_params["Y Values"] = y_values
+                if y_opt.label in ["Seed", "Var. seed"] and not no_fixed_seeds:
+                    pc.extra_generation_params["Fixed Y Values"] = ", ".join([str(y) for y in ymem])
+
+            grid_infotext[subgrid_index] = processing.create_infotext(pc, pc.all_prompts, pc.all_seeds, pc.all_subseeds)
+
+        # Sets main grid infotext
+        if grid_infotext[0] is None and ix == 0 and iy == 0 and iz == 0:
+            pc.extra_generation_params = copy(pc.extra_generation_params)
+
+            if z_opt.label != 'Nothing':
+                pc.extra_generation_params["Z Type"] = z_opt.label
+                pc.extra_generation_params["Z Values"] = z_values
+                if z_opt.label in ["Seed", "Var. seed"] and not no_fixed_seeds:
+                    pc.extra_generation_params["Fixed Z Values"] = ", ".join([str(z) for z in zmem])
+
+            grid_infotext[0] = processing.create_infotext(pc, pc.all_prompts, pc.all_seeds, pc.all_subseeds)
+
+        return res
+
+    def process_cell(x, y, z, ix, iy, iz):
+        nonlocal processed_result
+        
+
+        print(f"{bcolors.OKGREEN}XY plot: X: {xtype}, {str(x)}, Y: {ytype}, {str(y)}, Z: {ztype}, {str(z)} ({len(xmem)*len(ymem)*zcount + ycount*len(xmem) +xcount +1}/{allcount}){bcolors.ENDC}")
+        if not (((xtype=="seed") or (xtype=="prompt")) and xcount > 0):
+            _, currentmodel,modelid,theta_0, metadata =smerge(weights_a_in,weights_b_in, model_a,model_b,model_c, float(alpha),float(beta),mode,calcmode,
+                                                                                useblocks,"","",id_sets,False,deep_in,fine_in,bake_in_vae,deepprint = deepprint,lucks = lucks) 
+            checkpoint_info = sd_models.get_closet_checkpoint_match(model_a)
+            usemodel(checkpoint_info, already_loaded_state_dict=theta_0)
+
+        if "save model" in esettings:
+            savemodel(theta_0,currentmodel,custom_name,save_sets,model_a,metadata) 
+        theta_0 = {}
+        del theta_0
+
+        if xcount == 0: statid = modelid
+
+        image_temp = simggen(p,*gensets_s,*gensets,mergeinfo=currentmodel,id_sets=id_sets,modelid=modelid)
+        gc.collect()
+        devices.torch_gc()
+
+        xyimage.append(image_temp[0][0])
+        xcount+=1
+        deep = deepy
+        if state_mergen:
+            flag = True
+            break
+
+        def index(ix, iy, iz):
+            return ix + iy * len(xmem) + iz * len(xmem) * len(ymem)
+
+        state.job = f"{index(ix, iy, iz) + 1} out of {list_size}"
+
+        processed: Processed = cell(x, y, z, ix, iy, iz)
+
+        if processed_result is None:
+            # Use our first processed result object as a template container to hold our full results
+            processed_result = copy(processed)
+            processed_result.images = [None] * list_size
+            processed_result.all_prompts = [None] * list_size
+            processed_result.all_seeds = [None] * list_size
+            processed_result.infotexts = [None] * list_size
+            processed_result.index_of_first_image = 1
+
+        idx = index(ix, iy, iz)
+        if processed.images:
+            # Non-empty list indicates some degree of success.
+            processed_result.images[idx] = processed.images[0]
+            processed_result.all_prompts[idx] = processed.prompt
+            processed_result.all_seeds[idx] = processed.seed
+            processed_result.infotexts[idx] = processed.infotexts[0]
+        else:
+            cell_mode = "P"
+            cell_size = (processed_result.width, processed_result.height)
+            if processed_result.images[0] is not None:
+                cell_mode = processed_result.images[0].mode
+                #This corrects size in case of batches:
+                cell_size = processed_result.images[0].size
+            processed_result.images[idx] = Image.new(cell_mode, cell_size)
+
+
+    if first_axes_processed == 'x':
+        for ix, x in enumerate(xmem):
+            if second_axes_processed == 'y':
+                for iy, y in enumerate(ymem):
+                    for iz, z in enumerate(zmem):
+                        process_cell(x, y, z, ix, iy, iz)
+            else:
+                for iz, z in enumerate(zmem):
+                    for iy, y in enumerate(ymem):
+                        process_cell(x, y, z, ix, iy, iz)
+    elif first_axes_processed == 'y':
+        for iy, y in enumerate(ymem):
+            if second_axes_processed == 'x':
+                for ix, x in enumerate(xmem):
+                    for iz, z in enumerate(zmem):
+                        process_cell(x, y, z, ix, iy, iz)
+            else:
+                for iz, z in enumerate(zmem):
+                    for ix, x in enumerate(xmem):
+                        process_cell(x, y, z, ix, iy, iz)
+    elif first_axes_processed == 'z':
+        for iz, z in enumerate(zmem):
+            if second_axes_processed == 'x':
+                for ix, x in enumerate(xmem):
+                    for iy, y in enumerate(ymem):
+                        process_cell(x, y, z, ix, iy, iz)
+            else:
+                for iy, y in enumerate(ymem):
+                    for ix, x in enumerate(xmem):
+                        process_cell(x, y, z, ix, iy, iz)
+
+    if not processed_result:
+        # Should never happen, I've only seen it on one of four open tabs and it needed to refresh.
+        print("Unexpected error: Processing could not begin, you may need to refresh the tab or restart the service.")
+        return Processed(p, [])
+    elif not any(processed_result.images):
+        print("Unexpected error: draw_xyz_grid failed to return even a single processed image")
+        return Processed(p, [])
+
+    z_count = len(zmem)
+
+    for i in range(z_count):
+        start_index = (i * len(xmem) * len(ymem)) + i
+        end_index = start_index + len(xmem) * len(ymem)
+        grid = images.image_grid(processed_result.images[start_index:end_index], rows=len(ymem))
+        if draw_legend:
+            grid = images.draw_grid_annotations(grid, processed_result.images[start_index].size[0], processed_result.images[start_index].size[1], hor_texts, ver_texts, margin_size)
+        processed_result.images.insert(i, grid)
+        processed_result.all_prompts.insert(i, processed_result.all_prompts[start_index])
+        processed_result.all_seeds.insert(i, processed_result.all_seeds[start_index])
+        processed_result.infotexts.insert(i, processed_result.infotexts[start_index])
+
+    sub_grid_size = processed_result.images[0].size
+    z_grid = images.image_grid(processed_result.images[:z_count], rows=1)
+    if draw_legend:
+        z_grid = images.draw_grid_annotations(z_grid, sub_grid_size[0], sub_grid_size[1], title_texts, [[images.GridAnnotation()]])
+    processed_result.images.insert(0, z_grid)
+    #TODO: Deeper aspects of the program rely on grid info being misaligned between metadata arraymem, which is not ideal.
+    #processed_result.all_prompts.insert(0, processed_result.all_prompts[0])
+    #processed_result.all_seeds.insert(0, processed_result.all_seeds[0])
+    processed_result.infotexts.insert(0, processed_result.infotexts[0])
+
+    return processed_result
